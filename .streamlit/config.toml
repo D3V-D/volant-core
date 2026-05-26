@@ -1,0 +1,14 @@
+# Streamlit project config picked up automatically when launching from this dir.
+# CLI flags in launch.bat override these where they overlap.
+
+[server]
+headless = true
+port = 8501
+runOnSave = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#7DD3FC"

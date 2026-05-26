@@ -1,0 +1,17 @@
+[project]
+name = "volant"
+version = "0.1.0"
+description = "Volant - fly tracking analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit",
+    "pandas",
+    "plotly",
+    "numpy",
+    "scipy",
+    "kaleido",
+]
+
+[tool.uv]
+package = false
