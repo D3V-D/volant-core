@@ -6,8 +6,9 @@ title Volant
 :: Ensure freshly installed tools are reachable in this session.
 set "PATH=%PATH%;%USERPROFILE%\.local\bin;C:\Program Files\Git\cmd"
 
+set "VOLANT_HOST=127.0.0.1"
 set "VOLANT_PORT=8501"
-set "VOLANT_URL=http://localhost:%VOLANT_PORT%"
+set "VOLANT_URL=http://%VOLANT_HOST%:%VOLANT_PORT%"
 
 echo.
 echo.
@@ -50,15 +51,19 @@ if errorlevel 1 (
 )
 
 echo [+] Starting Volant on %VOLANT_URL% ...
-echo     This window will minimize automatically once the server is ready.
-echo   
-echo     ^(Watcher diagnostics: %WATCHER_LOG%^)
+echo     Your browser will open when the app is ready.
+echo     This window will minimize a few seconds after that.
 
-:: Minimize terminal and open localhost once the port is active
-start /b powershell -windowstyle minimized -command "$wait = 0; while($wait -lt 30) { try { $t = New-Object System.Net.Sockets.TcpClient('127.0.0.1', 8501); $t.Close(); start 'http://localhost:8501'; break } catch { Start-Sleep -s 1; $wait++ } }" 
+:: Detached watcher (not /b) so it does not share this console or stdin with Streamlit.
+start "VolantReady" /MIN powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0scripts\when_ready.ps1" -Url "%VOLANT_URL%" -Port %VOLANT_PORT% -WindowTitle "Volant"
 
 :: Run Streamlit in the foreground so this console doubles as the server log.
 uv run streamlit run app.py --server.port %VOLANT_PORT% --server.headless true --browser.gatherUsageStats false
+if errorlevel 1 (
+    echo.
+    echo [X] Volant stopped or failed to start. See the messages above.
+    pause
+)
 
 popd
 endlocal

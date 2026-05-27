@@ -7,19 +7,30 @@
 param(
     [Parameter(Mandatory = $true)][string]$Url,
     [Parameter(Mandatory = $true)][string]$WindowTitle,
-    [int]$TimeoutSeconds = 120
+    [int]$TimeoutSeconds = 120,
+    [int]$DelayAfterReadySeconds = 3
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
 $ProgressPreference    = 'SilentlyContinue'
+
+# localhost often stalls on IPv6; 127.0.0.1 is reliable on Windows.
+$Url = $Url -replace '://localhost([:/])', '://127.0.0.1$1'
 
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $ready    = $false
 
 while ((Get-Date) -lt $deadline) {
     try {
-        $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
-        if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
+        $request = [System.Net.HttpWebRequest]::Create($Url)
+        $request.Method = 'GET'
+        $request.Timeout = 5000
+        $request.ReadWriteTimeout = 5000
+        $request.UserAgent = 'VolantLauncher/1.0'
+        $response = $request.GetResponse()
+        $code = [int]$response.StatusCode
+        $response.Close()
+        if ($code -ge 200 -and $code -lt 500) {
             $ready = $true
             break
         }
@@ -28,6 +39,10 @@ while ((Get-Date) -lt $deadline) {
 }
 
 if (-not $ready) { exit 1 }
+
+if ($DelayAfterReadySeconds -gt 0) {
+    Start-Sleep -Seconds $DelayAfterReadySeconds
+}
 
 Add-Type -Namespace Native -Name Win32 -MemberDefinition @'
     [System.Runtime.InteropServices.DllImport("user32.dll")]

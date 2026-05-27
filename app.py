@@ -23,6 +23,39 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown(
+    """
+    <style>
+    .volant-page-title {
+        margin: 0.1rem 0 0.25rem 0;
+        letter-spacing: 0.01em;
+    }
+    .volant-page-subtitle {
+        color: rgba(241, 245, 249, 0.72);
+        margin-bottom: 0.8rem;
+    }
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] .volant-sidebar-title {
+        margin-top: 0.1rem;
+        margin-bottom: 0.15rem;
+        font-weight: 600;
+        letter-spacing: 0.015em;
+    }
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+        color: rgba(226, 232, 240, 0.72);
+    }
+    [data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+        border-radius: 0.6rem;
+        border-color: rgba(148, 163, 184, 0.35);
+        background: rgba(15, 23, 42, 0.18);
+    }
+    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] hr {
+        border-color: rgba(148, 163, 184, 0.22);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 EXPECTED_COLUMNS = [
     "frame", "time_s", "x_px", "y_px", "x_mm", "y_mm",
     "zone", "speed_mm_s", "dist_from_centre_mm", "confidence", "detected",
@@ -475,7 +508,7 @@ def _slugify(name: str) -> str:
 with st.sidebar:
     if ICON_PATH.exists():
         st.image(str(ICON_PATH), width=64)
-    st.title("Volant")
+    st.markdown("<h2 class='volant-sidebar-title'>Volant</h2>", unsafe_allow_html=True)
     st.caption("Fly tracking analysis")
     if "group_ids" not in st.session_state:
         st.session_state["group_ids"] = [1]
@@ -740,7 +773,8 @@ group_window_summary = (
     .sort_values("group")
 )
 
-st.title("Volant - Fly Tracking Dashboard")
+st.markdown("<h1 class='volant-page-title'>Volant</h1>", unsafe_allow_html=True)
+st.markdown("<div class='volant-page-subtitle'>Fly tracking dashboard</div>", unsafe_allow_html=True)
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Flies", f"{analysis_df['fly_id'].nunique():,}")
