@@ -325,6 +325,52 @@ def cumulative_distance_df(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(pieces, ignore_index=True)
 
 
+def group_cumulative_distance_df(cumdist_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate cumulative distance by group on a fixed 1s grid.
+
+    We forward-fill each fly's cumulative distance so the group aggregate remains
+    monotonic even when flies have different recording lengths or timestamps.
+    """
+    if cumdist_df.empty:
+        return pd.DataFrame({"group": [], "time_s": [], "cum_distance_mm": []})
+
+    grouped_rows: list[pd.DataFrame] = []
+    for group_name, part in cumdist_df.groupby("group", sort=False):
+        second_level = (
+            part.assign(second=np.floor(part["time_s"]).astype(int))
+            .groupby(["fly_id", "second"], as_index=False)
+            .agg(cum_distance_mm=("cum_distance_mm", "max"))
+        )
+        if second_level.empty:
+            continue
+
+        second_min = int(second_level["second"].min())
+        second_max = int(second_level["second"].max())
+        all_seconds = np.arange(second_min, second_max + 1)
+
+        wide = (
+            second_level.pivot(index="second", columns="fly_id", values="cum_distance_mm")
+            .reindex(all_seconds)
+            .sort_index()
+        )
+        wide = wide.ffill().fillna(0.0)
+        mean_curve = wide.mean(axis=1)
+
+        grouped_rows.append(
+            pd.DataFrame(
+                {
+                    "group": str(group_name),
+                    "time_s": mean_curve.index.astype(float),
+                    "cum_distance_mm": mean_curve.to_numpy(),
+                }
+            )
+        )
+
+    if not grouped_rows:
+        return pd.DataFrame({"group": [], "time_s": [], "cum_distance_mm": []})
+    return pd.concat(grouped_rows, ignore_index=True)
+
+
 def window_summary_df(df: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, float | str | int]] = []
     for fly_id, part in df.groupby("fly_id"):
@@ -745,11 +791,7 @@ group_cumavg = (
     .agg(cum_avg_speed_mm_s=("cum_avg_speed_mm_s", "mean"))
     .sort_values(["group", cumavg_x])
 )
-group_cumdist = (
-    cumdist.groupby(["group", "time_s"], as_index=False)
-    .agg(cum_distance_mm=("cum_distance_mm", "mean"))
-    .sort_values(["group", "time_s"])
-)
+group_cumdist = group_cumulative_distance_df(cumdist).sort_values(["group", "time_s"])
 activity_with_group = activity.merge(
     analysis_df[["fly_id", "group"]].drop_duplicates(),
     on="fly_id",
