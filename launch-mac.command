@@ -36,7 +36,7 @@ EOF
 
 if ! command -v uv >/dev/null 2>&1; then
     echo "[X] uv was not found on PATH."
-    echo "    Re-run volant-install-mac.sh from the parent folder to set up dependencies."
+    echo "    Re-run volant-install-mac.command from the parent folder to set up dependencies."
     read -r -p "Press Enter to close..."
     exit 1
 fi
