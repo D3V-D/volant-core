@@ -41,6 +41,46 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where git >nul 2>nul
+if errorlevel 1 (
+    echo [!] Git was not found on PATH. Skipping update check.
+) else (
+    if exist ".git\" (
+        echo [+] Checking for Volant updates...
+        git fetch --quiet
+        if errorlevel 1 (
+            echo [!] Could not check GitHub for updates. Continuing with the installed version.
+        ) else (
+            git rev-parse --abbrev-ref --symbolic-full-name @{upstream} >nul 2>nul
+            if errorlevel 1 (
+                echo [!] No upstream branch is configured. Skipping update check.
+            ) else (
+                set "GIT_DIRTY="
+                for /f "delims=" %%A in ('git status --porcelain') do set "GIT_DIRTY=1"
+                if defined GIT_DIRTY (
+                    echo [!] Local changes were found. Skipping automatic update to avoid conflicts.
+                ) else (
+                    set "UPDATE_COUNT=0"
+                    for /f "delims=" %%A in ('git rev-list --count HEAD..@{upstream}') do set "UPDATE_COUNT=%%A"
+                    if "!UPDATE_COUNT!"=="0" (
+                        echo [+] Volant is already up to date.
+                    ) else (
+                        echo [+] Found !UPDATE_COUNT! update^(s^). Pulling latest version...
+                        git pull --ff-only
+                        if errorlevel 1 (
+                            echo [!] Update failed. Continuing with the installed version.
+                        ) else (
+                            echo [+] Volant updated successfully.
+                        )
+                    )
+                )
+            )
+        )
+    ) else (
+        echo [!] This folder is not a Git checkout. Skipping update check.
+    )
+)
+
 echo [+] Preparing Python environment...
 uv sync
 if errorlevel 1 (

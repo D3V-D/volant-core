@@ -446,7 +446,6 @@ def raw_speed_plot(df: pd.DataFrame, fly_id: str) -> go.Figure:
     fig = px.line(
         sub, x="time_s", y="speed_mm_s",
         title=f"Speed over time (raw) — {fly_id}",
-        render_mode="webgl",
     )
     fig.update_layout(
         height=300, margin=dict(l=20, r=20, t=40, b=20),
@@ -460,7 +459,6 @@ def dist_plot(df: pd.DataFrame, fly_id: str) -> go.Figure:
     fig = px.line(
         sub, x="time_s", y="dist_from_centre_mm",
         title=f"Distance from centre over time — {fly_id}",
-        render_mode="webgl",
     )
     fig.update_layout(
         height=300, margin=dict(l=20, r=20, t=40, b=20),
@@ -827,7 +825,6 @@ with view_multi_fly:
             color="fly_id",
             title="Speed over time for all flies (1-second resolution)",
             labels={"second": "Time (s)", "speed_mm_s": "Speed (mm/s)", "fly_id": "Fly"},
-            render_mode="webgl",
         ),
     )
 
@@ -840,7 +837,6 @@ with view_multi_fly:
             color="fly_id",
             title="Cumulative average speed over time",
             labels={cumavg_x: cumavg_label, "cum_avg_speed_mm_s": "Cumulative average speed (mm/s)", "fly_id": "Fly"},
-            render_mode="webgl",
         ),
     )
 
@@ -853,7 +849,6 @@ with view_multi_fly:
             color="fly_id",
             title="5-second moving average speed (all flies)",
             labels={"second": "Time (s)", "speed_ma_5s": "5s moving average speed (mm/s)"},
-            render_mode="webgl",
         ),
     )
 
@@ -868,7 +863,6 @@ with view_multi_fly:
                 color="fly_id",
                 title="Power spectral density (Welch method) - per fly",
                 labels={"frequency_hz": "Frequency (Hz)", "power": "Power", "fly_id": "Fly"},
-                render_mode="webgl",
             ),
         )
     with col2:
@@ -881,7 +875,6 @@ with view_multi_fly:
                 color="fly_id",
                 title="Autocorrelation of speed - per fly",
                 labels={"lag_s": "Lag (s)", "autocorrelation": "Autocorrelation", "fly_id": "Fly"},
-                render_mode="webgl",
             ),
         )
 
@@ -951,7 +944,6 @@ with view_multi_fly:
                 color="fly_id",
                 title="Total distance traveled cumulatively (per fly)",
                 labels={"time_s": "Time (s)", "cum_distance_mm": "Cumulative distance (mm)"},
-                render_mode="webgl",
             ),
         )
     with col8:
@@ -976,7 +968,6 @@ with view_group:
             color="group",
             title="Average speed over time by group (1-second resolution)",
             labels={"second": "Time (s)", "speed_mm_s": "Speed (mm/s)", "group": "Group"},
-            render_mode="webgl",
         ),
     )
 
@@ -991,7 +982,6 @@ with view_group:
                 color="group",
                 title="Cumulative average speed by group",
                 labels={cumavg_x: cumavg_label, "cum_avg_speed_mm_s": "Cumulative average speed (mm/s)", "group": "Group"},
-                render_mode="webgl",
             ),
         )
     with col_g2:
@@ -1004,7 +994,6 @@ with view_group:
                 color="group",
                 title="Cumulative distance by group",
                 labels={"time_s": "Time (s)", "cum_distance_mm": "Cumulative distance (mm)", "group": "Group"},
-                render_mode="webgl",
             ),
         )
 
@@ -1019,7 +1008,6 @@ with view_group:
                 color="group",
                 title="5-second moving average speed by group",
                 labels={"second": "Time (s)", "speed_ma_5s": "5s moving average speed (mm/s)", "group": "Group"},
-                render_mode="webgl",
             ),
         )
     with col_g4:
@@ -1045,7 +1033,6 @@ with view_group:
                 color="group",
                 title="Power spectral density by group (Welch method)",
                 labels={"frequency_hz": "Frequency (Hz)", "power": "Power", "group": "Group"},
-                render_mode="webgl",
             ),
         )
     with col_g6:
@@ -1058,7 +1045,6 @@ with view_group:
                 color="group",
                 title="Autocorrelation of speed by group",
                 labels={"lag_s": "Lag (s)", "autocorrelation": "Autocorrelation", "group": "Group"},
-                render_mode="webgl",
             ),
         )
 
