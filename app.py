@@ -180,6 +180,12 @@ def prepare_fly_df(df: pd.DataFrame, fly_id: str, confidence_min: float) -> pd.D
     return out
 
 
+@st.cache_data(show_spinner=False)
+def prepare_fly_csv(file_bytes: bytes, fly_id: str, confidence_min: float) -> pd.DataFrame:
+    """Parse and normalize one uploaded CSV once per file/settings combination."""
+    return prepare_fly_df(load_csv(file_bytes), fly_id=fly_id, confidence_min=confidence_min)
+
+
 def as_second_resolution(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["second"] = np.floor(out["time_s"]).astype(int)
@@ -495,6 +501,90 @@ def activity_fraction_df(one_sec: pd.DataFrame, threshold_mm_s: float = 1.0) -> 
     return out
 
 
+@st.cache_data(show_spinner=False)
+def compute_analysis_outputs(
+    analysis_df: pd.DataFrame,
+    selected_window_unit: Literal["seconds", "frames"],
+    activity_threshold: float,
+) -> dict[str, object]:
+    """Compute derived tables once unless data/window settings actually change."""
+    one_sec = as_second_resolution(analysis_df)
+    one_sec_ma = add_moving_average(one_sec)
+    stats_60 = sixty_second_stats(one_sec)
+    avg_speed = average_speed_series(one_sec)
+    psd = welch_psd_df(avg_speed)
+    acf = autocorrelation_df(avg_speed)
+    psd_by_fly = psd_by_key_df(one_sec, key="fly_id")
+    acf_by_fly = autocorrelation_by_key_df(one_sec, key="fly_id")
+    psd_by_group = psd_by_key_df(one_sec, key="group")
+    acf_by_group = autocorrelation_by_key_df(one_sec, key="group")
+    cumdist = cumulative_distance_df(analysis_df)
+    activity = activity_fraction_df(one_sec, threshold_mm_s=float(activity_threshold))
+    cumavg, cumavg_x, cumavg_label = cumulative_average_speed_df(analysis_df, mode=selected_window_unit)
+    window_summary = window_summary_df(analysis_df)
+    group_one_sec = (
+        one_sec.groupby(["group", "second"], as_index=False)
+        .agg(speed_mm_s=("speed_mm_s", "mean"))
+        .sort_values(["group", "second"])
+    )
+    group_one_sec_ma = (
+        group_one_sec.assign(
+            speed_ma_5s=group_one_sec.groupby("group")["speed_mm_s"]
+            .transform(lambda s: s.rolling(5, min_periods=1).mean())
+        )
+    )
+    group_cumavg = (
+        cumavg.groupby(["group", cumavg_x], as_index=False)
+        .agg(cum_avg_speed_mm_s=("cum_avg_speed_mm_s", "mean"))
+        .sort_values(["group", cumavg_x])
+    )
+    group_cumdist = group_cumulative_distance_df(cumdist).sort_values(["group", "time_s"])
+    activity_with_group = activity.merge(
+        analysis_df[["fly_id", "group"]].drop_duplicates(),
+        on="fly_id",
+        how="left",
+    )
+    group_activity = (
+        activity_with_group.groupby("group", as_index=False)
+        .agg(activity_fraction=("activity_fraction", "mean"))
+        .sort_values("group")
+    )
+    group_window_summary = (
+        window_summary.groupby("group", as_index=False)
+        .agg(
+            flies=("fly_id", "nunique"),
+            samples=("samples", "sum"),
+            mean_speed_mm_s=("mean_speed_mm_s", "mean"),
+            total_distance_mm=("total_distance_mm", "sum"),
+        )
+        .sort_values("group")
+    )
+    return {
+        "one_sec": one_sec,
+        "one_sec_ma": one_sec_ma,
+        "stats_60": stats_60,
+        "avg_speed": avg_speed,
+        "psd": psd,
+        "acf": acf,
+        "psd_by_fly": psd_by_fly,
+        "acf_by_fly": acf_by_fly,
+        "psd_by_group": psd_by_group,
+        "acf_by_group": acf_by_group,
+        "cumdist": cumdist,
+        "activity": activity,
+        "cumavg": cumavg,
+        "cumavg_x": cumavg_x,
+        "cumavg_label": cumavg_label,
+        "window_summary": window_summary,
+        "group_one_sec": group_one_sec,
+        "group_one_sec_ma": group_one_sec_ma,
+        "group_cumavg": group_cumavg,
+        "group_cumdist": group_cumdist,
+        "group_activity": group_activity,
+        "group_window_summary": group_window_summary,
+    }
+
+
 def upload_label(file_name: str, existing_ids: Iterable[str]) -> str:
     stem = Path(file_name).stem.strip() or "fly"
     fly_id = stem
@@ -705,8 +795,7 @@ for group_name, files in group_upload_specs:
         fly_id = upload_label(file.name, used_ids)
         used_ids.append(fly_id)
         try:
-            raw = load_csv(file.getvalue())
-            prepared = prepare_fly_df(raw, fly_id=fly_id, confidence_min=confidence_min)
+            prepared = prepare_fly_csv(file.getvalue(), fly_id=fly_id, confidence_min=confidence_min)
             prepared["group"] = group_name
             fly_frames.append(prepared)
         except Exception as exc:  # noqa: BLE001
@@ -846,57 +935,33 @@ if analysis_df.empty:
 group_ids = sorted(analysis_df["group"].astype(str).unique())
 fly_ids = sorted(analysis_df["fly_id"].unique())
 
-one_sec = as_second_resolution(analysis_df)
-one_sec_ma = add_moving_average(one_sec)
-stats_60 = sixty_second_stats(one_sec)
-avg_speed = average_speed_series(one_sec)
-psd = welch_psd_df(avg_speed)
-acf = autocorrelation_df(avg_speed)
-psd_by_fly = psd_by_key_df(one_sec, key="fly_id")
-acf_by_fly = autocorrelation_by_key_df(one_sec, key="fly_id")
-psd_by_group = psd_by_key_df(one_sec, key="group")
-acf_by_group = autocorrelation_by_key_df(one_sec, key="group")
-cumdist = cumulative_distance_df(analysis_df)
-activity = activity_fraction_df(one_sec, threshold_mm_s=float(activity_threshold))
-cumavg, cumavg_x, cumavg_label = cumulative_average_speed_df(analysis_df, mode=selected_window_unit)
-window_summary = window_summary_df(analysis_df)
-group_one_sec = (
-    one_sec.groupby(["group", "second"], as_index=False)
-    .agg(speed_mm_s=("speed_mm_s", "mean"))
-    .sort_values(["group", "second"])
+analysis_outputs = compute_analysis_outputs(
+    analysis_df,
+    selected_window_unit=selected_window_unit,
+    activity_threshold=float(activity_threshold),
 )
-group_one_sec_ma = (
-    group_one_sec.assign(
-        speed_ma_5s=group_one_sec.groupby("group")["speed_mm_s"]
-        .transform(lambda s: s.rolling(5, min_periods=1).mean())
-    )
-)
-group_cumavg = (
-    cumavg.groupby(["group", cumavg_x], as_index=False)
-    .agg(cum_avg_speed_mm_s=("cum_avg_speed_mm_s", "mean"))
-    .sort_values(["group", cumavg_x])
-)
-group_cumdist = group_cumulative_distance_df(cumdist).sort_values(["group", "time_s"])
-activity_with_group = activity.merge(
-    analysis_df[["fly_id", "group"]].drop_duplicates(),
-    on="fly_id",
-    how="left",
-)
-group_activity = (
-    activity_with_group.groupby("group", as_index=False)
-    .agg(activity_fraction=("activity_fraction", "mean"))
-    .sort_values("group")
-)
-group_window_summary = (
-    window_summary.groupby("group", as_index=False)
-    .agg(
-        flies=("fly_id", "nunique"),
-        samples=("samples", "sum"),
-        mean_speed_mm_s=("mean_speed_mm_s", "mean"),
-        total_distance_mm=("total_distance_mm", "sum"),
-    )
-    .sort_values("group")
-)
+one_sec = analysis_outputs["one_sec"]
+one_sec_ma = analysis_outputs["one_sec_ma"]
+stats_60 = analysis_outputs["stats_60"]
+avg_speed = analysis_outputs["avg_speed"]
+psd = analysis_outputs["psd"]
+acf = analysis_outputs["acf"]
+psd_by_fly = analysis_outputs["psd_by_fly"]
+acf_by_fly = analysis_outputs["acf_by_fly"]
+psd_by_group = analysis_outputs["psd_by_group"]
+acf_by_group = analysis_outputs["acf_by_group"]
+cumdist = analysis_outputs["cumdist"]
+activity = analysis_outputs["activity"]
+cumavg = analysis_outputs["cumavg"]
+cumavg_x = analysis_outputs["cumavg_x"]
+cumavg_label = analysis_outputs["cumavg_label"]
+window_summary = analysis_outputs["window_summary"]
+group_one_sec = analysis_outputs["group_one_sec"]
+group_one_sec_ma = analysis_outputs["group_one_sec_ma"]
+group_cumavg = analysis_outputs["group_cumavg"]
+group_cumdist = analysis_outputs["group_cumdist"]
+group_activity = analysis_outputs["group_activity"]
+group_window_summary = analysis_outputs["group_window_summary"]
 
 st.markdown("<h1 class='volant-page-title'>Volant</h1>", unsafe_allow_html=True)
 st.markdown("<div class='volant-page-subtitle'>Fly tracking dashboard</div>", unsafe_allow_html=True)
