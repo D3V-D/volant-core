@@ -540,7 +540,12 @@ CHART_REGISTRY: "dict[str, go.Figure]" = {}
 def plot_chart(name: str, fig: go.Figure) -> go.Figure:
     """Render a Plotly chart and remember it for the chart download section."""
     CHART_REGISTRY[name] = fig
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        key=f"chart_{_slugify(name)}",
+        config={"responsive": True},
+    )
     return fig
 
 
@@ -565,6 +570,7 @@ with st.sidebar:
 
     group_upload_specs: list[tuple[str, list[BytesIO]]] = []
     group_to_delete: int | None = None
+    group_to_clear: int | None = None
     for ui_idx, group_id in enumerate(st.session_state["group_ids"], start=1):
         default_group_name = f"Group {ui_idx}"
         with st.container(border=True):
@@ -574,7 +580,7 @@ with st.sidebar:
             with delete_col:
                 can_delete = len(st.session_state["group_ids"]) > 1
                 if st.button(
-                    "🗑",
+                    "x",
                     key=f"group_delete_{group_id}",
                     help="Delete this group" if can_delete else "At least one group is required",
                     disabled=not can_delete,
@@ -586,19 +592,44 @@ with st.sidebar:
                 key=f"group_name_{group_id}",
             )
             group_name = raw_name.strip() or default_group_name
+            upload_version_key = f"group_upload_version_{group_id}"
+            upload_version = int(st.session_state.get(upload_version_key, 0))
+            upload_key = f"group_upload_{group_id}_{upload_version}"
             uploads = st.file_uploader(
                 f"Upload CSVs for {group_name}",
                 type=["csv"],
                 accept_multiple_files=True,
-                key=f"group_upload_{group_id}",
+                key=upload_key,
                 help="Expected columns include: " + ", ".join(EXPECTED_COLUMNS),
             )
+            if st.button(
+                "Clear CSVs",
+                key=f"group_clear_uploads_{group_id}",
+                disabled=not uploads,
+                help="Remove all uploaded CSVs from this group.",
+            ):
+                group_to_clear = group_id
+                uploads = []
             group_upload_specs.append((group_name, uploads))
 
     if group_to_delete is not None:
         st.session_state["group_ids"] = [gid for gid in st.session_state["group_ids"] if gid != group_to_delete]
-        for session_key in (f"group_name_{group_to_delete}", f"group_upload_{group_to_delete}", f"group_delete_{group_to_delete}"):
-            st.session_state.pop(session_key, None)
+        keys_to_pop = {
+            f"group_name_{group_to_delete}",
+            f"group_upload_{group_to_delete}",
+            f"group_upload_version_{group_to_delete}",
+            f"group_clear_uploads_{group_to_delete}",
+            f"group_delete_{group_to_delete}",
+        }
+        upload_prefix = f"group_upload_{group_to_delete}_"
+        for session_key in list(st.session_state.keys()):
+            if session_key in keys_to_pop or session_key.startswith(upload_prefix):
+                st.session_state.pop(session_key, None)
+        st.rerun()
+
+    if group_to_clear is not None:
+        upload_version_key = f"group_upload_version_{group_to_clear}"
+        st.session_state[upload_version_key] = int(st.session_state.get(upload_version_key, 0)) + 1
         st.rerun()
 
     confidence_min = st.slider("Min confidence", 0.0, 1.0, 0.5, 0.05)
