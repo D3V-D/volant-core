@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from scipy.signal import welch
 
 ROOT = Path(__file__).parent
@@ -55,6 +56,57 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+
+def install_plotly_chrome_repair() -> None:
+    """Nudge Plotly charts to relayout after Chrome/Streamlit render glitches."""
+    components.html(
+        """
+        <script>
+        (() => {
+          const parentWindow = window.parent;
+          const parentDocument = parentWindow.document;
+          if (parentWindow.__volantPlotlyRepairInstalled) return;
+          parentWindow.__volantPlotlyRepairInstalled = true;
+
+          let resizeTimer = null;
+          const resizePlots = () => {
+            const plotly = parentWindow.Plotly;
+            if (!plotly) return;
+            parentDocument.querySelectorAll(".js-plotly-plot").forEach((plot) => {
+              try {
+                plotly.Plots.resize(plot);
+              } catch (error) {
+                // Plotly can be mid-render during Streamlit reruns; the next pass will retry.
+              }
+            });
+          };
+
+          const scheduleResize = () => {
+            if (resizeTimer) parentWindow.clearTimeout(resizeTimer);
+            resizeTimer = parentWindow.setTimeout(resizePlots, 150);
+            [0, 350, 900].forEach((delay) => parentWindow.setTimeout(resizePlots, delay));
+          };
+
+          new MutationObserver(scheduleResize).observe(parentDocument.body, {
+            childList: true,
+            subtree: true,
+          });
+
+          parentDocument.addEventListener("click", scheduleResize, true);
+          parentDocument.addEventListener("contextmenu", (event) => {
+            if (event.target.closest(".js-plotly-plot")) {
+              scheduleResize();
+            }
+          }, true);
+          parentWindow.addEventListener("resize", scheduleResize);
+          scheduleResize();
+        })();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 
 EXPECTED_COLUMNS = [
     "frame", "time_s", "x_px", "y_px", "x_mm", "y_mm",
@@ -478,6 +530,7 @@ def trajectory_plot(df: pd.DataFrame, fly_id: str) -> go.Figure:
     fig = px.scatter(
         sub, x="x_mm", y="y_mm", color="time_s",
         color_continuous_scale="Viridis",
+        render_mode="svg",
         title=f"Trajectory — {fly_id} (x vs y, coloured by time)",
         labels={"x_mm": "x (mm)", "y_mm": "y (mm)", "time_s": "Time (s)"},
     )
@@ -534,12 +587,13 @@ def zone_plot(df: pd.DataFrame, fly_id: str) -> go.Figure:
     return fig
 
 
-CHART_REGISTRY: "dict[str, go.Figure]" = {}
+CHART_REGISTRY: "dict[str, go.Figure]" = st.session_state.setdefault("chart_registry", {})
 
 
 def plot_chart(name: str, fig: go.Figure) -> go.Figure:
     """Render a Plotly chart and remember it for the chart download section."""
     CHART_REGISTRY[name] = fig
+    fig.update_layout(autosize=True)
     st.plotly_chart(
         fig,
         use_container_width=True,
@@ -846,6 +900,7 @@ group_window_summary = (
 
 st.markdown("<h1 class='volant-page-title'>Volant</h1>", unsafe_allow_html=True)
 st.markdown("<div class='volant-page-subtitle'>Fly tracking dashboard</div>", unsafe_allow_html=True)
+install_plotly_chrome_repair()
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Flies", f"{analysis_df['fly_id'].nunique():,}")
@@ -853,14 +908,26 @@ k2.metric("Groups", f"{analysis_df['group'].nunique():,}")
 k3.metric("Total samples", f"{len(analysis_df):,}")
 k4.metric("Avg activity fraction", f"{activity['activity_fraction'].mean() * 100:.1f}%")
 
-tab_charts, tab_exports = st.tabs(["Charts", "Tables & exports"])
+main_view = st.radio(
+    "View",
+    ["Charts", "Tables & exports"],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="main_view",
+)
 
-with tab_charts:
-    view_individual, view_multi_fly, view_group = st.tabs(
-        ["Individual fly", "Multi-fly", "Group comparison"]
+if main_view == "Charts":
+    chart_view = st.radio(
+        "Chart view",
+        ["Individual fly", "Multi-fly", "Group comparison"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="chart_view",
     )
+else:
+    chart_view = None
 
-with view_individual:
+if chart_view == "Individual fly":
     selected_group = st.selectbox("Select group", group_ids)
     group_fly_ids = sorted(analysis_df.loc[analysis_df["group"] == selected_group, "fly_id"].unique())
     selected_fly = st.selectbox("Select fly", group_fly_ids)
@@ -888,7 +955,7 @@ with view_individual:
     with st.expander(f"Raw data preview — {selected_fly}"):
         st.dataframe(fly_df.head(preview_rows), use_container_width=True)
 
-with view_multi_fly:
+elif chart_view == "Multi-fly":
     plot_chart(
         "Multi-fly — speed over time (1s resolution)",
         px.line(
@@ -1031,7 +1098,7 @@ with view_multi_fly:
             ),
         )
 
-with view_group:
+elif chart_view == "Group comparison":
     plot_chart(
         "Group — average speed over time",
         px.line(
@@ -1121,7 +1188,7 @@ with view_group:
             ),
         )
 
-with tab_exports:
+if main_view == "Tables & exports":
     with st.expander("Data preview (1-second aggregation)"):
         st.dataframe(one_sec.head(preview_rows), use_container_width=True)
 
